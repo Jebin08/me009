@@ -1,226 +1,333 @@
+
 <?php
 header("Content-Type: application/json");
-require_once "config/Database.php";
+
+include "config/Database.php";
 
 $db = (new Database())->connect();
-$action = $_REQUEST['action'] ?? '';
 
-if($action == 'fetch_list')    listData($db);
-elseif($action == 'fetch_single') getOne($db);
-elseif($action == 'save')      saveData($db);
-elseif($action == 'update')    updateData($db);
-elseif($action == 'soft_delete') deleteData($db);
-elseif($action == 'restore')   restoreData($db);
-elseif($action == 'fetch_deleted') trashData($db);
-elseif($action == 'get_districts') districts($db);
-elseif($action == 'fetch_logs') logs($db);
-else echo json_encode(["status" => false, "message" => "Invalid action"]);
+$action = isset($_REQUEST['action']) ? $_REQUEST['action'] : "";
 
 
-function listData($db) {
-  $search = trim($_GET['search'] ?? '');
-  $page   = (int)($_GET['page']  ?? 1);
-  $limit  = (int)($_GET['limit'] ?? 10);
-  $offset = ($page - 1) * $limit;
+/* ================= ROUTER ================= */
 
-  if($search != '') {
-    $like = "%$search%";
-    $stmt = $db->prepare("SELECT r.*, s.state_name, d.district_name
-      FROM registrations r
-      LEFT JOIN states s ON s.id = r.state_id
-      LEFT JOIN districts d ON d.id = r.district_id
-      WHERE r.is_deleted = 0
-      AND (r.full_name LIKE ? OR r.mobile LIKE ? OR r.email LIKE ?)
-      ORDER BY r.id DESC LIMIT ? OFFSET ?");
-    $stmt->bindValue(1, $like);
-    $stmt->bindValue(2, $like);
-    $stmt->bindValue(3, $like);
-    $stmt->bindValue(4, $limit, PDO::PARAM_INT);
-    $stmt->bindValue(5, $offset, PDO::PARAM_INT);
-    $stmt->execute();
-    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $c = $db->prepare("SELECT COUNT(*) FROM registrations r WHERE r.is_deleted = 0
-      AND (r.full_name LIKE ? OR r.mobile LIKE ? OR r.email LIKE ?)");
-    $c->execute([$like, $like, $like]);
-  } else {
-    $stmt = $db->prepare("SELECT r.*, s.state_name, d.district_name
-      FROM registrations r
-      LEFT JOIN states s ON s.id = r.state_id
-      LEFT JOIN districts d ON d.id = r.district_id
-      WHERE r.is_deleted = 0
-      ORDER BY r.id DESC LIMIT ? OFFSET ?");
-    $stmt->bindValue(1, $limit, PDO::PARAM_INT);
-    $stmt->bindValue(2, $offset, PDO::PARAM_INT);
-    $stmt->execute();
-    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    $c = $db->prepare("SELECT COUNT(*) FROM registrations WHERE is_deleted = 0");
-    $c->execute();
-  }
-
-  $total = $c->fetchColumn();
-  echo json_encode([
-    "status" => true,
-    "data"   => $data,
-    "total"  => $total,
-    "current_page" => $page,
-    "total_pages"  => ceil($total / $limit)
-  ]);
+if($action == "fetch_list")
+{
+    listData($db);
+}
+else if($action == "fetch_single")
+{
+    getOne($db);
+}
+else if($action == "save")
+{
+    saveData($db);
+}
+else if($action == "update")
+{
+    updateData($db);
+}
+else if($action == "soft_delete")
+{
+    deleteData($db);
+}
+else if($action == "restore")
+{
+    restoreData($db);
+}
+else if($action == "fetch_deleted")
+{
+    trashData($db);
+}
+else if($action == "get_districts")
+{
+    districts($db);
+}
+else if($action == "fetch_logs")
+{
+    logs($db);
+}
+else
+{
+    echo json_encode(["status"=>false]);
 }
 
 
-function getOne($db) {
-  $id   = (int)($_GET['id'] ?? 0);
-  $stmt = $db->prepare("SELECT * FROM registrations WHERE id = ?");
-  $stmt->execute([$id]);
-  $row  = $stmt->fetch(PDO::FETCH_ASSOC);
-  echo json_encode($row ? $row : []);
-}
 
+/* ================= LIST ================= */
 
-function saveData($db) {
-  $name     = trim($_POST['full_name']    ?? '');
-  $mobile   = trim($_POST['mobile']       ?? '');
-  $email    = trim($_POST['email']        ?? '');
-  $state    = (int)($_POST['state_id']    ?? 0);
-  $district = (int)($_POST['district_id'] ?? 0);
-
-  if(strlen($name) < 3) { echo json_encode(["status"=>false,"message"=>"Name too short"]); return; }
-  if(!preg_match("/^[6-9][0-9]{9}$/", $mobile)) { echo json_encode(["status"=>false,"message"=>"Invalid mobile"]); return; }
-  if(!filter_var($email, FILTER_VALIDATE_EMAIL)) { echo json_encode(["status"=>false,"message"=>"Invalid email"]); return; }
-
-  $photo = null;
-  if(isset($_FILES['photo']) && $_FILES['photo']['error'] == 0) {
-    $ext = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
-    if(in_array($ext, ['jpg','jpeg','png','gif'])) {
-      if(!is_dir('uploads/photo/')) mkdir('uploads/photo/', 0755, true);
-      $photo = 'uploads/photo/' . uniqid() . '.' . $ext;
-      move_uploaded_file($_FILES['photo']['tmp_name'], $photo);
+function listData($db)
+{
+    $search = "";
+    if(isset($_GET['search']))
+    {
+        $search = trim($_GET['search']);
     }
-  }
 
-  try {
-    $db->beginTransaction();
-    $stmt = $db->prepare("INSERT INTO registrations (full_name, mobile, email, state_id, district_id, photo) VALUES (?,?,?,?,?,?)");
-    $stmt->execute([$name, $mobile, $email, $state, $district, $photo]);
+    if($search != "")
+    {
+        $like = "%".$search."%";
+
+        $sql = "SELECT r.*, s.state_name, d.district_name
+                FROM registrations r
+                LEFT JOIN states s ON s.id = r.state_id
+                LEFT JOIN districts d ON d.id = r.district_id
+                WHERE r.is_deleted = 0
+                AND (r.full_name LIKE ? OR r.mobile LIKE ? OR r.email LIKE ?)
+                ORDER BY r.id DESC";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$like,$like,$like]);
+    }
+    else
+    {
+        $sql = "SELECT r.*, s.state_name, d.district_name
+                FROM registrations r
+                LEFT JOIN states s ON s.id = r.state_id
+                LEFT JOIN districts d ON d.id = r.district_id
+                WHERE r.is_deleted = 0
+                ORDER BY r.id DESC";
+
+        $stmt = $db->query($sql);
+    }
+
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        "status" => true,
+        "data"   => $data
+    ]);
+}
+
+
+
+/* ================= SINGLE ================= */
+
+function getOne($db)
+{
+    $id = 0;
+
+    if(isset($_GET['id']))
+    {
+        $id = $_GET['id'];
+    }
+
+    $stmt = $db->prepare("SELECT * FROM registrations WHERE id = ?");
+    $stmt->execute([$id]);
+
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        "status" => true,
+        "data"   => $row
+    ]);
+}
+
+
+
+/* ================= SAVE ================= */
+
+function saveData($db)
+{
+    $name     = $_POST['full_name'];
+    $mobile   = $_POST['mobile'];
+    $email    = $_POST['email'];
+    $state    = $_POST['state_id'];
+    $district = $_POST['district_id'];
+
+    // basic validation
+    if(strlen($name) < 3)
+    {
+        echo json_encode(["status"=>false]);
+        return;
+    }
+
+    $photo = "";
+
+    if(isset($_FILES['photo']) && $_FILES['photo']['name'] != "")
+    {
+        $photo = "uploads/".time().$_FILES['photo']['name'];
+
+        move_uploaded_file($_FILES['photo']['tmp_name'],$photo);
+    }
+
+    $sql = "INSERT INTO registrations
+            (full_name,mobile,email,state_id,district_id,photo)
+            VALUES (?,?,?,?,?,?)";
+
+    $stmt = $db->prepare($sql);
+    $stmt->execute([$name,$mobile,$email,$state,$district,$photo]);
+
     $id = $db->lastInsertId();
-    addLog($db, 'CREATE', $id, $name);
-    $db->commit();
-    echo json_encode(["status" => true]);
-  } catch(Exception $e) {
-    $db->rollBack();
-    echo json_encode(["status" => false, "message" => "Save failed"]);
-  }
+
+    addLog($db,"CREATE",$id,$name);
+
+    echo json_encode(["status"=>true]);
 }
 
 
-function updateData($db) {
-  $id       = (int)($_POST['id']          ?? 0);
-  $name     = trim($_POST['full_name']    ?? '');
-  $mobile   = trim($_POST['mobile']       ?? '');
-  $email    = trim($_POST['email']        ?? '');
-  $state    = (int)($_POST['state_id']    ?? 0);
-  $district = (int)($_POST['district_id'] ?? 0);
 
-  if($id == 0) { echo json_encode(["status"=>false,"message"=>"Invalid ID"]); return; }
-  if(strlen($name) < 3) { echo json_encode(["status"=>false,"message"=>"Name too short"]); return; }
-  if(!preg_match("/^[6-9][0-9]{9}$/", $mobile)) { echo json_encode(["status"=>false,"message"=>"Invalid mobile"]); return; }
-  if(!filter_var($email, FILTER_VALIDATE_EMAIL)) { echo json_encode(["status"=>false,"message"=>"Invalid email"]); return; }
+/* ================= UPDATE ================= */
 
-  try {
-    $db->beginTransaction();
+function updateData($db)
+{
+    $id       = $_POST['id'];
+    $name     = $_POST['full_name'];
+    $mobile   = $_POST['mobile'];
+    $email    = $_POST['email'];
+    $state    = $_POST['state_id'];
+    $district = $_POST['district_id'];
 
-    $photo = null;
-    if(isset($_FILES['photo']) && $_FILES['photo']['error'] == 0) {
-      $ext = strtolower(pathinfo($_FILES['photo']['name'], PATHINFO_EXTENSION));
-      if(in_array($ext, ['jpg','jpeg','png','gif'])) {
-        if(!is_dir('uploads/photo/')) mkdir('uploads/photo/', 0755, true);
-        $photo = 'uploads/photo/' . uniqid() . '.' . $ext;
-        move_uploaded_file($_FILES['photo']['tmp_name'], $photo);
+    $photo = "";
 
-        $old = $db->prepare("SELECT photo FROM registrations WHERE id = ?");
+    if(isset($_FILES['photo']) && $_FILES['photo']['name'] != "")
+    {
+        $photo = "uploads/".time().$_FILES['photo']['name'];
+
+        move_uploaded_file($_FILES['photo']['tmp_name'],$photo);
+
+        // delete old photo
+        $old = $db->prepare("SELECT photo FROM registrations WHERE id=?");
         $old->execute([$id]);
-        $oldPhoto = $old->fetchColumn();
-        if($oldPhoto && file_exists($oldPhoto)) unlink($oldPhoto);
-      }
+
+        $oldImg = $old->fetchColumn();
+
+        if($oldImg && file_exists($oldImg))
+        {
+            unlink($oldImg);
+        }
     }
 
-    if($photo) {
-      $stmt = $db->prepare("UPDATE registrations SET full_name=?, mobile=?, email=?, state_id=?, district_id=?, photo=? WHERE id=?");
-      $stmt->execute([$name, $mobile, $email, $state, $district, $photo, $id]);
-    } else {
-      $stmt = $db->prepare("UPDATE registrations SET full_name=?, mobile=?, email=?, state_id=?, district_id=? WHERE id=?");
-      $stmt->execute([$name, $mobile, $email, $state, $district, $id]);
+    if($photo != "")
+    {
+        $sql = "UPDATE registrations
+                SET full_name=?,mobile=?,email=?,state_id=?,district_id=?,photo=?
+                WHERE id=?";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$name,$mobile,$email,$state,$district,$photo,$id]);
+    }
+    else
+    {
+        $sql = "UPDATE registrations
+                SET full_name=?,mobile=?,email=?,state_id=?,district_id=?
+                WHERE id=?";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$name,$mobile,$email,$state,$district,$id]);
     }
 
-    addLog($db, 'UPDATE', $id, $name);
-    $db->commit();
-    echo json_encode(["status" => true]);
-  } catch(Exception $e) {
-    $db->rollBack();
-    echo json_encode(["status" => false, "message" => "Update failed"]);
-  }
+    addLog($db,"UPDATE",$id,$name);
+
+    echo json_encode(["status"=>true]);
 }
 
 
-function deleteData($db) {
-  $id = (int)($_POST['id'] ?? 0);
-  if($id == 0) { echo json_encode(["status"=>false,"message"=>"Invalid ID"]); return; }
 
-  $s = $db->prepare("SELECT full_name FROM registrations WHERE id = ?");
-  $s->execute([$id]);
-  $name = $s->fetchColumn();
+/* ================= DELETE ================= */
 
-  $db->beginTransaction();
-  $stmt = $db->prepare("UPDATE registrations SET is_deleted=1, deleted_at=NOW() WHERE id=?");
-  $stmt->execute([$id]);
-  addLog($db, 'DELETE', $id, $name);
-  $db->commit();
-  echo json_encode(["status" => true]);
+function deleteData($db)
+{
+    $id = $_POST['id'];
+
+    $q = $db->prepare("SELECT full_name FROM registrations WHERE id=?");
+    $q->execute([$id]);
+
+    $name = $q->fetchColumn();
+
+    $stmt = $db->prepare("UPDATE registrations SET is_deleted=1, deleted_at=NOW() WHERE id=?");
+    $stmt->execute([$id]);
+
+    addLog($db,"DELETE",$id,$name);
+
+    echo json_encode(["status"=>true]);
 }
 
 
-function restoreData($db) {
-  $id = (int)($_POST['id'] ?? 0);
-  if($id == 0) { echo json_encode(["status"=>false,"message"=>"Invalid ID"]); return; }
 
-  $s = $db->prepare("SELECT full_name FROM registrations WHERE id = ?");
-  $s->execute([$id]);
-  $name = $s->fetchColumn();
+/* ================= RESTORE ================= */
 
-  $db->beginTransaction();
-  $stmt = $db->prepare("UPDATE registrations SET is_deleted=0, deleted_at=NULL WHERE id=?");
-  $stmt->execute([$id]);
-  addLog($db, 'RESTORE', $id, $name);
-  $db->commit();
-  echo json_encode(["status" => true]);
+function restoreData($db)
+{
+    $id = $_POST['id'];
+
+    $q = $db->prepare("SELECT full_name FROM registrations WHERE id=?");
+    $q->execute([$id]);
+
+    $name = $q->fetchColumn();
+
+    $stmt = $db->prepare("UPDATE registrations SET is_deleted=0, deleted_at=NULL WHERE id=?");
+    $stmt->execute([$id]);
+
+    addLog($db,"RESTORE",$id,$name);
+
+    echo json_encode(["status"=>true]);
 }
 
 
-function trashData($db) {
-  $stmt = $db->query("SELECT * FROM registrations WHERE is_deleted = 1 ORDER BY id DESC");
-  echo json_encode(["status" => true, "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+
+/* ================= TRASH ================= */
+
+function trashData($db)
+{
+    $stmt = $db->query("SELECT * FROM registrations WHERE is_deleted=1 ORDER BY id DESC");
+
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        "status"=>true,
+        "data"=>$data
+    ]);
 }
 
 
-function districts($db) {
-  $sid  = (int)($_GET['state_id'] ?? 0);
-  $stmt = $db->prepare("SELECT id, district_name FROM districts WHERE state_id = ? ORDER BY district_name");
-  $stmt->execute([$sid]);
-  echo json_encode(["status" => true, "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+
+/* ================= DISTRICTS ================= */
+
+function districts($db)
+{
+    $state = $_GET['state_id'];
+
+    $stmt = $db->prepare("SELECT id,district_name FROM districts WHERE state_id=?");
+    $stmt->execute([$state]);
+
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        "status"=>true,
+        "data"=>$data
+    ]);
 }
 
 
-function logs($db) {
-  $stmt = $db->query("SELECT * FROM audit_log ORDER BY id DESC LIMIT 100");
-  echo json_encode(["status" => true, "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+
+/* ================= LOGS ================= */
+
+function logs($db)
+{
+    $stmt = $db->query("SELECT * FROM audit_log ORDER BY id DESC LIMIT 50");
+
+    $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    echo json_encode([
+        "status"=>true,
+        "data"=>$data
+    ]);
 }
 
 
-function addLog($db, $action, $id, $name) {
-  $ip   = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-  $stmt = $db->prepare("INSERT INTO audit_log (action, record_id, record_name, ip_address) VALUES (?,?,?,?)");
-  $stmt->execute([$action, $id, $name, $ip]);
+
+/* ================= ADD LOG ================= */
+
+function addLog($db,$action,$id,$name)
+{
+    $ip = $_SERVER['REMOTE_ADDR'];
+
+    $stmt = $db->prepare("INSERT INTO audit_log
+        (action,record_id,record_name,ip_address)
+        VALUES (?,?,?,?)");
+
+    $stmt->execute([$action,$id,$name,$ip]);
 }
 ?>
+
