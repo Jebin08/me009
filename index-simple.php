@@ -148,158 +148,368 @@ $db = (new Database())->connect();
 
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-  <script>
-    let currentSearch = '';
+ <script>
 
-    // Load data functions (simple)
-    function loadActive() {
-      $.get('controller.php', {action: 'fetch_list', search: currentSearch}).done(data => {
-        let html = '';
-        if (data.status && data.data.length) {
-          data.data.forEach(r => {
-            html += `<tr>
-              <td>${r.photo ? `<img src="${r.photo}" class="avatar" onerror="this.style.display='none'">` : '<i class="bi bi-person-circle avatar bg-light"></i>'}</td>
-              <td><strong>${r.full_name}</strong></td>
-              <td>${r.mobile}</td>
-              <td>${r.email}</td>
-              <td>${r.state_name || 'N/A'}</td>
-              <td>
-                <button class="btn btn-sm btn-warning editBtn" data-id="${r.id}">Edit</button>
-                <button class="btn btn-sm btn-danger delBtn" data-id="${r.id}">Delete</button>
-              </td>
-            </tr>`;
-          });
-        } else {
-          html = '<tr><td colspan="6" class="text-center py-4 text-muted">No records</td></tr>';
+// LOAD ACTIVE
+function loadData()
+{
+    var search = $("#search").val();
+
+    $.get("controller.php",
+    {
+        action : "list",
+        search : search
+    },
+    function(res)
+    {
+        var html = "";
+
+        if(res.length > 0)
+        {
+            for(var i = 0; i < res.length; i++)
+            {
+                html += "<tr>";
+
+                html += "<td>" + res[i].name + "</td>";
+                html += "<td>" + res[i].mobile + "</td>";
+                html += "<td>" + res[i].email + "</td>";
+
+                html += "<td>";
+                html += "<button class='edit btn btn-sm btn-warning' data-id='"+res[i].id+"'>Edit</button> ";
+                html += "<button class='del btn btn-sm btn-danger' data-id='"+res[i].id+"'>Delete</button>";
+                html += "</td>";
+
+                html += "</tr>";
+            }
         }
-        $('#activeTable').html(html);
-      });
+        else
+        {
+            html = "<tr><td colspan='4' class='text-center'>No data</td></tr>";
+        }
+
+        $("#data").html(html);
+
+    }, "json");
+}
+
+
+// LOAD TRASH
+
+// LOAD ACTIVE DATA
+function loadData()
+{
+    var search = $("#searchInput").val();
+
+    $.get("controller.php",
+    {
+        action : "fetch_list",
+        search : search
+    },
+    function(res)
+    {
+        var html = "";
+
+        if(res.status && res.data.length > 0)
+        {
+            for(var i = 0; i < res.data.length; i++)
+            {
+                var r = res.data[i];
+
+                html += "<tr>";
+
+                // photo
+                html += "<td>";
+                if(r.photo != "")
+                {
+                    html += "<img src='"+r.photo+"' class='avatar'>";
+                }
+                else
+                {
+                    html += "<i class='bi bi-person-circle'></i>";
+                }
+                html += "</td>";
+
+                html += "<td>" + r.full_name + "</td>";
+                html += "<td>" + r.mobile + "</td>";
+                html += "<td>" + r.email + "</td>";
+                html += "<td>" + (r.state_name ? r.state_name : "N/A") + "</td>";
+
+                html += "<td>";
+                html += "<button class='editBtn btn btn-sm btn-warning' data-id='"+r.id+"'>Edit</button> ";
+                html += "<button class='delBtn btn btn-sm btn-danger' data-id='"+r.id+"'>Delete</button>";
+                html += "</td>";
+
+                html += "</tr>";
+            }
+        }
+        else
+        {
+            html = "<tr><td colspan='6' class='text-center'>No records</td></tr>";
+        }
+
+        $("#activeTable").html(html);
+
+    }, "json");
+}
+
+
+// LOAD TRASH
+function loadTrash()
+{
+    $.get("controller.php",
+    {
+        action : "fetch_deleted"
+    },
+    function(res)
+    {
+        var html = "";
+
+        if(res.status && res.data.length > 0)
+        {
+            for(var i = 0; i < res.data.length; i++)
+            {
+                var r = res.data[i];
+
+                html += "<tr>";
+
+                html += "<td>" + r.full_name + "</td>";
+                html += "<td>" + r.mobile + "</td>";
+                html += "<td>" + r.deleted_at + "</td>";
+
+                html += "<td>";
+                html += "<button class='restoreBtn btn btn-sm btn-success' data-id='"+r.id+"'>Restore</button>";
+                html += "</td>";
+
+                html += "</tr>";
+            }
+        }
+        else
+        {
+            html = "<tr><td colspan='4' class='text-center'>No trash</td></tr>";
+        }
+
+        $("#trashTable").html(html);
+
+    }, "json");
+}
+
+
+// LOAD LOGS
+function loadLogs()
+{
+    $.get("controller.php",
+    {
+        action : "fetch_logs"
+    },
+    function(res)
+    {
+        var html = "";
+
+        if(res.status && res.data.length > 0)
+        {
+            for(var i = 0; i < res.data.length; i++)
+            {
+                var l = res.data[i];
+
+                html += "<tr>";
+
+                html += "<td>" + l.logged_at + "</td>";
+                html += "<td>" + l.action + "</td>";
+                html += "<td>" + l.record_name + "</td>";
+                html += "<td>" + l.ip_address + "</td>";
+
+                html += "</tr>";
+            }
+        }
+        else
+        {
+            html = "<tr><td colspan='4' class='text-center'>No logs</td></tr>";
+        }
+
+        $("#logsTable").html(html);
+
+    }, "json");
+}
+
+
+// STATE -> DISTRICT
+$("#stateSelect").change(function()
+{
+    var id = $(this).val();
+
+    $.get("controller.php",
+    {
+        action : "get_districts",
+        state_id : id
+    },
+    function(res)
+    {
+        var opt = "<option value=''>Select District</option>";
+
+        if(res.data)
+        {
+            for(var i = 0; i < res.data.length; i++)
+            {
+                opt += "<option value='"+res.data[i].id+"'>"+res.data[i].district_name+"</option>";
+            }
+        }
+
+        $("#districtSelect").html(opt);
+
+    }, "json");
+});
+
+
+// SAVE / UPDATE
+$("#regForm").submit(function(e)
+{
+    e.preventDefault();
+
+    var fd = new FormData(this);
+
+    if($("#editId").val() != "")
+    {
+        fd.append("action","update");
+    }
+    else
+    {
+        fd.append("action","save");
     }
 
-    function loadTrash() {
-      $.get('controller.php', {action: 'fetch_deleted'}).done(data => {
-        let html = '';
-        if (data.status && data.data.length) {
-          data.data.forEach(r => {
-            html += `<tr>
-              <td>${r.full_name}</td>
-              <td>${r.mobile}</td>
-              <td>${r.deleted_at}</td>
-              <td><button class="btn btn-sm btn-success restoreBtn" data-id="${r.id}">Restore</button></td>
-            </tr>`;
-          });
-        } else {
-          html = '<tr><td colspan="4" class="text-center py-4 text-muted">No deleted records</td></tr>';
-        }
-        $('#trashTable').html(html);
-      });
-    }
+    $.ajax({
+        url : "controller.php",
+        type : "POST",
+        data : fd,
+        processData : false,
+        contentType : false,
+        success : function(res)
+        {
+            if(res.status)
+            {
+                $("#regForm")[0].reset();
+                $("#editId").val("");
 
-    function loadLogs() {
-      $.get('controller.php', {action: 'fetch_logs'}).done(data => {
-        let html = '';
-        if (data.status && data.data.length) {
-          data.data.forEach(l => {
-            html += `<tr>
-              <td>${new Date(l.logged_at).toLocaleString()}</td>
-              <td><span class="badge bg-${l.action=='CREATE'?'success':l.action=='DELETE'?'danger':'warning'}">${l.action}</span></td>
-              <td>${l.record_name}</td>
-              <td>${l.ip_address}</td>
-            </tr>`;
-          });
-        } else {
-          html = '<tr><td colspan="4" class="text-center py-4 text-muted">No logs</td></tr>';
-        }
-        $('#logsTable').html(html);
-      });
-    }
+                loadData();
+                loadTrash();
+                loadLogs();
 
-    // State districts
-    $('#stateSelect').change(function() {
-      const stateId = $(this).val();
-      $.get('controller.php', {action: 'get_districts', state_id: stateId}).done(data => {
-        let opts = '<option value="">Select District</option>';
-        if (data.data) data.data.forEach(d => opts += `<option value="${d.id}">${d.district_name}</option>`);
-        $('#districtSelect').html(opts);
-      });
+                alert("Saved");
+            }
+            else
+            {
+                alert("Error");
+            }
+        }
     });
+});
 
-    // Form submit
-    $('#regForm').submit(function(e) {
-      e.preventDefault();
-      const fd = new FormData(this);
-      fd.append('action', $('#editId').val() ? 'update' : 'save');
-      $.ajax({
-        url: 'controller.php',
-        method: 'POST',
-        data: fd,
-        processData: false,
-        contentType: false,
-        success: function(res) {
-          if (res.status) {
-            $('#regForm')[0].reset();
-            $('#editId').val('');
-            loadActive();
+
+// EDIT
+$(document).on("click",".editBtn",function()
+{
+    var id = $(this).data("id");
+
+    $.get("controller.php",
+    {
+        action : "fetch_single",
+        id : id
+    },
+    function(res)
+    {
+        if(res.status)
+        {
+            var r = res.data;
+
+            $("#editId").val(r.id);
+
+            $("input[name='full_name']").val(r.full_name);
+            $("input[name='mobile']").val(r.mobile);
+            $("input[name='email']").val(r.email);
+
+            $("#stateSelect").val(r.state_id).change();
+
+            setTimeout(function()
+            {
+                $("#districtSelect").val(r.district_id);
+            },300);
+        }
+    },
+    "json");
+});
+
+// DELETE
+$(document).on("click",".delBtn",function()
+{
+    var id = $(this).data("id");
+
+    if(confirm("Move to trash?"))
+    {
+        $.post("controller.php",
+        {
+            action : "soft_delete",
+            id : id
+        },
+        function()
+        {
+            loadData();
             loadTrash();
-            loadLogs();
-            alert('Saved!');
-          } else {
-            alert('Error: ' + (res.message || 'Failed'));
-          }
-        }
-      });
-    });
-
-    // Edit
-    $(document).on('click', '.editBtn', function() {
-      const id = $(this).data('id');
-      $.get('controller.php', {action: 'fetch_single', id}).done(res => {
-        if (res.id) {
-          $('#editId').val(res.id);
-          $('[name="full_name"]').val(res.full_name);
-          $('[name="mobile"]').val(res.mobile);
-          $('[name="email"]').val(res.email);
-          $('#stateSelect').val(res.state_id).trigger('change');
-          setTimeout(() => $('#districtSelect').val(res.district_id), 200);
-          // Photo preview later
-        }
-      });
-    });
-
-    // Delete/Restore
-    $(document).on('click', '.delBtn', function() {
-      if (confirm('Move to trash?')) {
-        const id = $(this).data('id');
-        $.post('controller.php', {action: 'soft_delete', id}).done(() => {
-          loadActive(); loadTrash();
         });
-      }
-    });
-    $(document).on('click', '.restoreBtn', function() {
-      if (confirm('Restore?')) {
-        const id = $(this).data('id');
-        $.post('controller.php', {action: 'restore', id}).done(() => {
-          loadTrash(); loadActive();
+    }
+});
+
+
+// RESTORE
+$(document).on("click",".restoreBtn",function()
+{
+    var id = $(this).data("id");
+
+    if(confirm("Restore?"))
+    {
+        $.post("controller.php",
+        {
+            action : "restore",
+            id : id
+        },
+        function()
+        {
+            loadData();
+            loadTrash();
         });
-      }
-    });
+    }
+});
 
-    // Search/Refresh
-    $('#searchInput').on('keyup', function() {
-      currentSearch = $(this).val();
-      loadActive();
-    });
-    $('#refreshBtn').click(() => loadActive());
 
-    // Cancel edit
-    $('#cancelEdit').click(() => $('#regForm')[0].reset());
+// SEARCH
+$("#searchInput").keyup(function()
+{
+    loadData();
+});
 
-    // Init
-    $(function() {
-      loadActive();
-      loadTrash();
-      loadLogs();
-    });
-  </script>
+
+// REFRESH
+$("#refreshBtn").click(function()
+{
+    loadData();
+});
+
+
+// CANCEL
+$("#cancelEdit").click(function()
+{
+    $("#regForm")[0].reset();
+    $("#editId").val("");
+});
+
+
+// INIT
+$(document).ready(function()
+{
+    loadData();
+    loadTrash();
+    loadLogs();
+});
+
+
+</script>
 </body>
 </html>
